@@ -215,3 +215,25 @@ func WriteInjectError(w http.ResponseWriter, err error, targetHost, vaultName, b
 			"Failed to resolve broker services")
 	}
 }
+
+// methodOverrideHeaders ask some servers to act on another method than the one on
+// the request line, which would take a request past a rule on the method.
+var methodOverrideHeaders = []string{"X-Http-Method-Override", "X-Http-Method", "X-Method-Override"}
+
+// RequestAllowed applies a matched service's request rules to r. It has to run
+// before anything is sent upstream. A service with no rules allows everything.
+func RequestAllowed(rules []broker.RequestRule, r *http.Request, webSocket bool) bool {
+	if len(rules) == 0 {
+		return true
+	}
+	for _, h := range methodOverrideHeaders {
+		if r.Header.Get(h) != "" {
+			return false
+		}
+	}
+	method := r.Method
+	if webSocket {
+		method = broker.RuleMethodWebSocket
+	}
+	return broker.CheckRules(rules, method, r.URL.EscapedPath(), r.URL.RawQuery).Allowed
+}

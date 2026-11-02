@@ -21,6 +21,7 @@ type scopedSessionRequest struct {
 }
 
 type scopedSessionResponse struct {
+	ID        string `json:"id"` // what DELETE /v1/sessions/{id} takes
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
 	AVAddr    string `json:"av_addr,omitempty"`
@@ -117,10 +118,16 @@ func (s *Server) handleScopedSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Caller must be at least a vault `member`. A `proxy`-role caller
-	// (user, agent, or scoped session) can ONLY proxy requests through
-	// Agent Vault — they cannot mint new tokens, even at proxy role.
-	if _, err := s.requireVaultMember(w, r, ns.ID); err != nil {
+	// Caller must be at least a vault `member`, or an agent token at `proxy`
+	// (see requireSessionMinter). A proxy-role user or a scoped session can
+	// ONLY proxy requests through Agent Vault: no new tokens, even at proxy role.
+	proxyAgent, err := s.requireSessionMinter(w, r, ns.ID)
+	if err != nil {
+		return
+	}
+	// What a proxy agent mints stands in for it in the audit log, so it has to say who for.
+	if proxyAgent != nil && req.Label == "" {
+		jsonError(w, http.StatusBadRequest, "label is required")
 		return
 	}
 	parentSess := sessionFromContext(ctx)
@@ -165,6 +172,7 @@ func (s *Server) handleScopedSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonOK(w, scopedSessionResponse{
+		ID:        sess.PublicID,
 		Token:     sess.ID,
 		ExpiresAt: formatExpiresAt(sess.ExpiresAt),
 		AVAddr:    s.baseURL,
@@ -233,10 +241,35 @@ func (s *Server) handleListScopedSessions(w http.ResponseWriter, r *http.Request
 	jsonOK(w, map[string]interface{}{"sessions": out})
 }
 
+// requireSessionMinter lets an instance-level agent token with only `proxy` on
+// the vault mint and revoke scoped sessions, and otherwise asks for `member` as
+// upstream does. This is what per-sandbox identity needs: the harness can hand
+// each sandbox its own short-lived, revocable, labelled token without being able
+// to read or change the vault's credentials, which `member` would allow. It gives
+// nothing the agent doesn't have, since a child can only do what the agent's own
+// token does, and a child can't mint. Returns the agent when that's the rule that
+// applied, nil when the caller is a member.
+func (s *Server) requireSessionMinter(w http.ResponseWriter, r *http.Request, vaultID string) (*Actor, error) {
+	sess := sessionFromContext(r.Context())
+	if sess != nil && sess.VaultID == "" && sess.AgentID != "" {
+		if role, err := s.store.GetVaultRole(r.Context(), sess.AgentID, vaultID); err == nil && role == "proxy" {
+			actor, err := s.actorFromSession(r.Context(), sess)
+			if err != nil {
+				jsonError(w, http.StatusForbidden, "Invalid session")
+				return nil, err
+			}
+			return actor, nil
+		}
+	}
+	_, err := s.requireVaultMember(w, r, vaultID)
+	return nil, err
+}
+
 // handleRevokeScopedSession deletes one vault-scoped token by its
 // public_id. The caller must be at least a vault `member` of the row's
-// vault — proxy-only sessions cannot revoke. Cross-vault revocation is
-// blocked at the store level via the vault_id filter.
+// vault, or the agent that minted it — other proxy-only callers cannot
+// revoke. Cross-vault revocation is blocked at the store level via the
+// vault_id filter.
 func (s *Server) handleRevokeScopedSession(w http.ResponseWriter, r *http.Request) {
 	publicID := r.PathValue("id")
 	if publicID == "" {
@@ -257,11 +290,16 @@ func (s *Server) handleRevokeScopedSession(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if _, err := s.requireVaultMember(w, r, ns.ID); err != nil {
+	proxyAgent, err := s.requireSessionMinter(w, r, ns.ID)
+	if err != nil {
 		return
 	}
 
-	err = s.store.RevokeScopedSession(ctx, ns.ID, publicID)
+	if proxyAgent != nil {
+		err = s.store.RevokeScopedSessionMintedBy(ctx, ns.ID, publicID, proxyAgent.ID)
+	} else {
+		err = s.store.RevokeScopedSession(ctx, ns.ID, publicID)
+	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			jsonError(w, http.StatusNotFound, "Session not found")

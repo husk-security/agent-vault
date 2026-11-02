@@ -35,6 +35,7 @@ type Service struct {
 	Enabled       *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
 	Auth          Auth           `yaml:"auth" json:"auth"`
 	Substitutions []Substitution `yaml:"substitutions,omitempty" json:"substitutions,omitempty"`
+	Rules         []RequestRule  `yaml:"rules,omitempty" json:"rules,omitempty"`
 }
 
 // MatcherPattern returns the joined inline form (`slack.com/api/*`),
@@ -377,6 +378,9 @@ func Validate(cfg *Config) error {
 			return fmt.Errorf("service %d: %w", i, err)
 		}
 		if err := s.ValidateSubstitutions(); err != nil {
+			return fmt.Errorf("service %d: %w", i, err)
+		}
+		if err := s.ValidateRules(); err != nil {
 			return fmt.Errorf("service %d: %w", i, err)
 		}
 	}

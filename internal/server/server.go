@@ -274,6 +274,7 @@ type Store interface {
 	RevokeUserSession(ctx context.Context, userID, publicID string) error
 	ListScopedSessionsByVault(ctx context.Context, vaultID string) ([]store.Session, error)
 	RevokeScopedSession(ctx context.Context, vaultID, publicID string) error
+	RevokeScopedSessionMintedBy(ctx context.Context, vaultID, publicID, actorID string) error
 
 	// Vaults
 	CreateVault(ctx context.Context, name string) (*store.Vault, error)

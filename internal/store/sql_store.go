@@ -1708,6 +1708,25 @@ func (s *SQLStore) RevokeScopedSession(ctx context.Context, vaultID, publicID st
 	return nil
 }
 
+// RevokeScopedSessionMintedBy is RevokeScopedSession limited to what actorID minted.
+func (s *SQLStore) RevokeScopedSessionMintedBy(ctx context.Context, vaultID, publicID, actorID string) error {
+	if vaultID == "" || publicID == "" || actorID == "" {
+		return sql.ErrNoRows
+	}
+	res, err := s.db.ExecContext(ctx,
+		s.dialect.Rebind("DELETE FROM sessions WHERE vault_id = ? AND public_id = ? AND created_by_actor_id = ? AND user_id IS NULL AND agent_id IS NULL"),
+		vaultID, publicID, actorID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoking scoped session: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *SQLStore) GetSession(ctx context.Context, rawToken string) (*Session, error) {
 	tokenHash := hashSessionToken(rawToken)
 	row := s.db.QueryRowContext(ctx,
@@ -3457,6 +3476,10 @@ func (s *SQLStore) ListRequestLogs(ctx context.Context, opts ListRequestLogsOpts
 	if opts.MatchedService != "" {
 		where = append(where, "matched_service = ?")
 		args = append(args, opts.MatchedService)
+	}
+	if opts.ActorID != "" {
+		where = append(where, "actor_id = ?")
+		args = append(args, opts.ActorID)
 	}
 	switch opts.StatusBucket {
 	case "2xx":

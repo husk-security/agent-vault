@@ -2738,3 +2738,48 @@ func TestListUnmatchedHosts(t *testing.T) {
 		t.Fatalf("expected 0 hosts for nonexistent vault, got %d", len(empty))
 	}
 }
+
+func TestRevokeScopedSessionMintedBy(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	ns, err := s.CreateVault(ctx, "minted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := s.CreateScopedSession(ctx, CreateScopedSessionParams{VaultID: ns.ID, VaultRole: "proxy", Label: "box:a", CreatedByActorID: "harness", CreatedByActorType: "agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeScopedSessionMintedBy(ctx, ns.ID, sess.PublicID, "someone-else"); err != sql.ErrNoRows {
+		t.Fatalf("someone else revoked it: %v", err)
+	}
+	if err := s.RevokeScopedSessionMintedBy(ctx, ns.ID, sess.PublicID, "harness"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.GetSession(ctx, sess.ID); err == nil && got != nil {
+		t.Fatal("still resolves after revoke")
+	}
+}
+
+func TestListRequestLogsByActor(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	ns, err := s.CreateVault(ctx, "audited")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := []RequestLog{
+		{VaultID: ns.ID, ActorType: "session", ActorID: "vm:a", Ingress: "mitm", Method: "GET", Host: "h", Path: "/1", Status: 200},
+		{VaultID: ns.ID, ActorType: "session", ActorID: "box:a", Ingress: "mitm", Method: "POST", Host: "h", Path: "/2", Status: 403, ErrorCode: "rule_denied"},
+	}
+	if err := s.InsertRequestLogs(ctx, rows); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ListRequestLogs(ctx, ListRequestLogsOpts{VaultID: &ns.ID, ActorID: "box:a", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != "/2" || got[0].ErrorCode != "rule_denied" {
+		t.Fatalf("got %+v", got)
+	}
+}

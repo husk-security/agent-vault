@@ -357,6 +357,7 @@ type ListRequestLogsOpts struct {
 	Ingress        string // "", "explicit", "mitm"
 	StatusBucket   string // "", "2xx", "3xx", "4xx", "5xx", "err"
 	MatchedService string
+	ActorID        string
 	Before         int64 // rows with id < Before (pagination going back)
 	After          int64 // rows with id > After (polling for new rows)
 	Limit          int   // capped at 200 by handler; store trusts caller
@@ -514,6 +515,8 @@ type Store interface {
 	// RevokeScopedSession deletes one scoped session by (vaultID, publicID).
 	// Vault scoping prevents cross-vault revocation.
 	RevokeScopedSession(ctx context.Context, vaultID, publicID string) error
+	// RevokeScopedSessionMintedBy does the same for a session that actorID minted.
+	RevokeScopedSessionMintedBy(ctx context.Context, vaultID, publicID, actorID string) error
 	// TouchSession bumps last_used_at for the given raw token and
 	// refreshes last_ip + last_user_agent (empty values leave the
 	// existing column unchanged). Throttled internally so per-request

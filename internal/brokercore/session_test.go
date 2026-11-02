@@ -233,3 +233,22 @@ func TestResolveForProxy_UserSessionNoVaultNoAgent(t *testing.T) {
 		t.Fatalf("expected ErrNoVaultContext, got %v", err)
 	}
 }
+
+func TestResolveForProxy_ScopedSessionHasAnActor(t *testing.T) {
+	f := newFakeSessionStore()
+	f.putVault("v1", "sandboxes")
+	f.sessions["labelled"] = &store.Session{VaultID: "v1", VaultRole: "proxy", Label: "box:agent-7", PublicID: "abc"}
+	f.sessions["unlabelled"] = &store.Session{VaultID: "v1", VaultRole: "proxy", PublicID: "abc"}
+	f.sessions["user"] = &store.Session{UserID: "u1", VaultID: "v1", VaultRole: "proxy", Label: "not-used"}
+
+	r := NewStoreSessionResolver(f)
+	for token, want := range map[string]string{"labelled": "box:agent-7", "unlabelled": "abc", "user": "u1"} {
+		scope, err := r.ResolveForProxy(context.Background(), token, "sandboxes")
+		if err != nil {
+			t.Fatalf("%s: %v", token, err)
+		}
+		if got := scope.ActorID(); got != want {
+			t.Errorf("%s: actor %q, want %q", token, got, want)
+		}
+	}
+}

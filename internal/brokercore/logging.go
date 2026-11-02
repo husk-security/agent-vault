@@ -20,8 +20,9 @@ const (
 // Actor types identify the principal behind a proxied request. Same
 // reason for constants as the ingress labels above.
 const (
-	ActorTypeUser  = "user"
-	ActorTypeAgent = "agent"
+	ActorTypeUser    = "user"
+	ActorTypeAgent   = "agent"
+	ActorTypeSession = "session" // a scoped session; the actor id is its label
 )
 
 // ProxyEvent is the shape of a single structured per-request log line

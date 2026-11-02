@@ -57,6 +57,11 @@ type InjectResult struct {
 	// Passthrough is set when no service matched but the unmatched-host
 	// policy permitted forwarding.
 	Passthrough bool
+
+	// Rules are the matched service's request rules. Set even when an error
+	// comes back with this result, so a request they refuse is refused the
+	// same way whether or not its credential resolves. Safe to log.
+	Rules []broker.RequestRule
 }
 
 // CredentialProvider resolves a service for (targetHost, targetPath) in
@@ -215,6 +220,7 @@ func (p *StoreCredentialProvider) Inject(ctx context.Context, vaultID, targetHos
 		MatchedPath:    matched.Path,
 		MatchedPort:    matched.Port,
 		CredentialKeys: matched.CredentialKeys(),
+		Rules:          matched.Rules,
 	}
 
 	// Resolve substitutions before auth so passthrough services (which

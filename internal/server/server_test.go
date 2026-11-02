@@ -230,6 +230,16 @@ func (m *mockStore) RevokeScopedSession(_ context.Context, vaultID, publicID str
 	return sql.ErrNoRows
 }
 
+func (m *mockStore) RevokeScopedSessionMintedBy(_ context.Context, vaultID, publicID, actorID string) error {
+	for id, sess := range m.sessions {
+		if sess.VaultID == vaultID && sess.PublicID == publicID && sess.CreatedByActorID == actorID && sess.UserID == "" && sess.AgentID == "" {
+			delete(m.sessions, id)
+			return nil
+		}
+	}
+	return sql.ErrNoRows
+}
+
 func (m *mockStore) GetSession(_ context.Context, id string) (*store.Session, error) {
 	s, ok := m.sessions[id]
 	if !ok {

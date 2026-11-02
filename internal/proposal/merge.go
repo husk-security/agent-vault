@@ -59,6 +59,9 @@ func MergeServices(existing []broker.Service, proposed []Service) ([]broker.Serv
 				if len(p.Substitutions) == 0 {
 					next.Substitutions = merged[idx].Substitutions
 				}
+				// A proposal can't say anything about rules, and losing them
+				// would turn a read-only service into an open one.
+				next.Rules = merged[idx].Rules
 				merged[idx] = next
 			default:
 				nameIndex[p.Name] = len(merged)

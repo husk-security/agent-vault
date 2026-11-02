@@ -26,16 +26,25 @@ type ProxyScope struct {
 	VaultID   string
 	VaultName string
 	VaultRole string
+
+	// SessionActor names the holder of a scoped session, which is neither a
+	// user nor an agent: its label, or its public id if it has none. The label
+	// goes in the request log rather than a reference to the session, because
+	// the row has to outlive a session that was revoked with its box.
+	SessionActor string
 }
 
-// ActorID returns the non-empty principal ID — UserID for user
-// sessions, AgentID for agent tokens. Used as the actor dimension in
-// per-scope rate-limit keys.
+// ActorID returns the non-empty principal ID — UserID for user sessions,
+// AgentID for agent tokens, SessionActor for scoped sessions. Used as the actor
+// dimension in per-scope rate-limit keys, so one sandbox can't spend another's.
 func (s *ProxyScope) ActorID() string {
 	if s.UserID != "" {
 		return s.UserID
 	}
-	return s.AgentID
+	if s.AgentID != "" {
+		return s.AgentID
+	}
+	return s.SessionActor
 }
 
 // SessionResolver collapses bearer-token validation and vault selection
@@ -97,13 +106,20 @@ func (r *StoreSessionResolver) ResolveForProxy(ctx context.Context, token, vault
 		if vaultHint != "" && vaultHint != v.Name {
 			return nil, ErrVaultHintMismatch
 		}
-		return &ProxyScope{
+		scope := &ProxyScope{
 			UserID:    sess.UserID,
 			AgentID:   sess.AgentID,
 			VaultID:   v.ID,
 			VaultName: v.Name,
 			VaultRole: sess.VaultRole,
-		}, nil
+		}
+		if sess.UserID == "" && sess.AgentID == "" {
+			scope.SessionActor = sess.Label
+			if scope.SessionActor == "" {
+				scope.SessionActor = sess.PublicID
+			}
+		}
+		return scope, nil
 	}
 
 	// Instance-level agent token: resolve vault from hint, or from the

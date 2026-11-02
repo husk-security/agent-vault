@@ -42,6 +42,9 @@ func actorFromScope(scope *brokercore.ProxyScope) (string, string) {
 	if scope.AgentID != "" {
 		return brokercore.ActorTypeAgent, scope.AgentID
 	}
+	if scope.SessionActor != "" {
+		return brokercore.ActorTypeSession, scope.SessionActor
+	}
 	return "", ""
 }
 
@@ -246,6 +249,13 @@ func (p *Proxy) forwardRequest(
 		event.MatchedPort = inject.MatchedPort
 		event.CredentialKeys = inject.CredentialKeys
 		event.Passthrough = inject.Passthrough
+
+		if !brokercore.RequestAllowed(inject.Rules, r, isWebSocketUpgrade(r)) {
+			brokercore.WriteProxyError(w, http.StatusForbidden, "rule_denied",
+				fmt.Sprintf("Service %q in vault %q doesn't allow %s %s", inject.MatchedName, scope.VaultName, r.Method, r.URL.Path))
+			emit(http.StatusForbidden, "rule_denied")
+			return
+		}
 	}
 	if err != nil {
 		errCode := "no_match"

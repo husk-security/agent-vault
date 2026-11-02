@@ -53,6 +53,7 @@ func (s *Server) handleVaultLogsList(w http.ResponseWriter, r *http.Request) {
 		Ingress:        q.Get("ingress"),
 		StatusBucket:   q.Get("status_bucket"),
 		MatchedService: q.Get("service"),
+		ActorID:        q.Get("actor"),
 	}
 
 	if raw := q.Get("before"); raw != "" {
@@ -138,7 +139,7 @@ func (s *Server) handleVaultLogsList(w http.ResponseWriter, r *http.Request) {
 			ErrorCode:      r.ErrorCode,
 			ActorType:      r.ActorType,
 			ActorID:        r.ActorID,
-			ActorName:      actorNames[r.ActorType+":"+r.ActorID],
+			ActorName:      actorName(actorNames, r),
 			CreatedAt:      r.CreatedAt.Format(time.RFC3339),
 		}
 	}
@@ -163,4 +164,12 @@ func (s *Server) handleVaultLogsList(w http.ResponseWriter, r *http.Request) {
 		"next_cursor": nextCursor,
 		"latest_id":   latestID,
 	})
+}
+
+// actorName is the name a row shows. A scoped session's actor id already is one.
+func actorName(names map[string]string, r store.RequestLog) string {
+	if r.ActorType == "session" {
+		return r.ActorID
+	}
+	return names[r.ActorType+":"+r.ActorID]
 }
