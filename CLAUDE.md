@@ -50,3 +50,11 @@ make docker       # Multi-stage Docker image; data persisted at /data/.agent-vau
 - When a change affects operator-facing behavior, update [README.md](README.md).
 - Whenever a new feature lands, scan [docs/](docs/) for pages that need a matching update — quickstart, guides, self-hosting, learn, and reference all mirror runtime behavior and drift fast.
 - When the *mental model* in this file drifts (new core concept, renamed ingress path, changed permission axes), update this file — but don't re-bloat it with reference material that belongs in the skill files or `--help`.
+
+## This fork (husk-security/agent-vault, branch fleet-v0.40.2)
+
+Upstream has stopped maintaining the standalone product. This branch is v0.40.2 plus what Fleet (husk-security/fleet) needs. Never open anything upstream.
+
+- Vulnerable modules bumped.
+- `rules` on a service ([internal/broker/rules.go](internal/broker/rules.go)): what an allowlist entry may be used for, on method, path and query. First match decides, nothing matching is refused, no rules means everything goes. Applied in `forwardRequest`, before anything goes upstream; refused is 403 `rule_denied`.
+- Scoped sessions as sandbox identity: an agent token with only `proxy` may mint (label required) and end its own (`requireSessionMinter`), the answer has an `id`, and the proxy logs a session as `actor_type: session` with its label, in the row, and rate-limits it by label. `GET /v1/vaults/{v}/logs?actor=` filters on it.
